@@ -1,8 +1,8 @@
-package oauth2
+package vendor
 
 import (
 	"errors"
-	"github.com/lastbackend/oauth2/internal"
+	"internal"
 )
 
 func GetClient(vendor, clientID, clientSecretID, redirectURI string) (internal.IOAuth2, error) {

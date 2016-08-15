@@ -2,7 +2,7 @@ package github
 
 import (
 	"encoding/json"
-	"github.com/lastbackend/oauth2/model"
+	"model"
 	"golang.org/x/oauth2"
 	"strconv"
 	"time"

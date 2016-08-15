@@ -3,7 +3,7 @@ package slack
 import (
 	"encoding/json"
 	"errors"
-	"github.com/lastbackend/oauth2/model"
+	"model"
 	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
