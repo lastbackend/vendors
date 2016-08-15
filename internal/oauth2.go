@@ -1,12 +1,12 @@
 package internal
 
 import (
-	"github.com/lastbackend/oauth2/bitbucket"
-	"github.com/lastbackend/oauth2/github"
-	"github.com/lastbackend/oauth2/gitlab"
-	"github.com/lastbackend/oauth2/model"
-	"github.com/lastbackend/oauth2/slack"
-	"github.com/lastbackend/oauth2/wechat"
+	"bitbucket"
+	"github"
+	"gitlab"
+	"model"
+	"slack"
+	"wechat"
 	"golang.org/x/oauth2"
 )
 
