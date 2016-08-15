@@ -4,9 +4,10 @@ import (
 	"github.com/lastbackend/oauth2/bitbucket"
 	"github.com/lastbackend/oauth2/github"
 	"github.com/lastbackend/oauth2/gitlab"
-	"github.com/lastbackend/oauth2/slack"
-	"golang.org/x/oauth2"
 	"github.com/lastbackend/oauth2/model"
+	"github.com/lastbackend/oauth2/slack"
+	"github.com/lastbackend/oauth2/wechat"
+	"golang.org/x/oauth2"
 )
 
 type IOAuth2 interface {
@@ -17,8 +18,19 @@ type IOAuth2 interface {
 }
 
 var OAuthVendors map[string]func(string, string, string) (IOAuth2, error) = map[string]func(string, string, string) (IOAuth2, error){
-	"github":    func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) { return github.GetClient(clientID, clientSecretID, redirectURI) },
-	"bitbucket": func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) { return bitbucket.GetClient(clientID, clientSecretID, redirectURI) },
-	"gitlab":    func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) { return gitlab.GetClient(clientID, clientSecretID, redirectURI) },
-	"slack":     func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) { return slack.GetClient(clientID, clientSecretID, redirectURI) },
+	"github": func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) {
+		return github.GetClient(clientID, clientSecretID, redirectURI)
+	},
+	"bitbucket": func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) {
+		return bitbucket.GetClient(clientID, clientSecretID, redirectURI)
+	},
+	"gitlab": func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) {
+		return gitlab.GetClient(clientID, clientSecretID, redirectURI)
+	},
+	"slack": func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) {
+		return slack.GetClient(clientID, clientSecretID, redirectURI)
+	},
+	"wechat": func(clientID, clientSecretID, redirectURI string) (IOAuth2, error) {
+		return wechat.GetClient(clientID, clientSecretID, redirectURI)
+	},
 }
