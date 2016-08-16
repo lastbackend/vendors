@@ -1,0 +1,37 @@
+# Vendors for Go
+
+## Installation
+
+~~~~
+go get golang.org/lastbackend/vendors
+~~~~
+
+## Usage ##
+
+```go
+import "github.com/lastbackend/vendors"
+```
+
+Get client for vendor type
+```go
+client, err := vendors.GetClient(vendor, clientID, clientSecretID, redirectURI)
+if err != nil {
+    return err
+}
+```
+
+Get token using auth code
+```go
+token, err := client.GetToken(code)
+if err != nil {
+    return err
+}
+```
+
+Get user information use token
+```go
+user, err := client.GetUser(token)
+if err != nil {
+    return err
+}
+```
