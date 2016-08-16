@@ -1,8 +1,8 @@
-package vendor
+package vendors
 
 import (
 	"errors"
-	"internal"
+	"github.com/lastbackend/vendors/internal"
 )
 
 func GetClient(vendor, clientID, clientSecretID, redirectURI string) (internal.IOAuth2, error) {

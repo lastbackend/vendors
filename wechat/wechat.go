@@ -3,7 +3,7 @@ package wechat
 import (
 	"encoding/json"
 	"errors"
-	"model"
+	"github.com/lastbackend/vendors/model"
 	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
