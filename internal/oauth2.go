@@ -1,13 +1,13 @@
 package internal
 
 import (
-	"bitbucket"
-	"github"
-	"gitlab"
-	"model"
-	"slack"
-	"wechat"
 	"golang.org/x/oauth2"
+	"github.com/lastbackend/vendors/github"
+	"github.com/lastbackend/vendors/model"
+	"github.com/lastbackend/vendors/bitbucket"
+	"github.com/lastbackend/vendors/gitlab"
+	"github.com/lastbackend/vendors/slack"
+	"github.com/lastbackend/vendors/wechat"
 )
 
 type IOAuth2 interface {

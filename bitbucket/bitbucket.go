@@ -2,9 +2,9 @@ package bitbucket
 
 import (
 	"encoding/json"
+	"github.com/lastbackend/vendors/model"
 	"golang.org/x/oauth2"
 	"time"
-	"model"
 )
 
 type Bitbucket struct {

@@ -2,7 +2,7 @@ package gitlab
 
 import (
 	"encoding/json"
-	"model"
+	"github.com/lastbackend/vendors/model"
 	"golang.org/x/oauth2"
 	"strconv"
 	"time"
