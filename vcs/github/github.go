@@ -1,0 +1,405 @@
+package github
+
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/lastbackend/vendors"
+	"github.com/lastbackend/vendors/protocol"
+	"github.com/lastbackend/vendors/providers/vcs"
+	"golang.org/x/oauth2"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+	"io"
+	"bytes"
+	"errors"
+)
+
+// const
+
+const (
+	API_URL   = "https://api.github.com/"
+	TOKEN_URL = "https://github.com/login/oauth/access_token"
+	VENDOR    = vendors.Vendor{Vendor: "GitHub", Host: "GitHub.com"}
+)
+
+// Model
+
+type GitHub struct {
+	proto protocol.OAuth2
+}
+
+// IVendor
+
+func GetClient(clientID, clientSecretID, redirectURI string) *GitHub {
+
+	return &GitHub{proto: protocol.OAuth2{ClientID: clientID, ClientSecret: clientSecretID, RedirectUri: redirectURI}}
+
+}
+
+func (GitHub) GetVendorInfo() vendors.Vendor {
+	return VENDOR
+}
+
+// IOAuth2 func
+
+func (g GitHub) GetToken(code string) (oauth2.Token, error) {
+
+	token, err := g.getOAuth2Config().Exchange(oauth2.NoContext, code)
+	if err != nil {
+		return nil, err
+	}
+
+	return token, nil
+
+}
+
+func (g GitHub) RefreshToken(token oauth2.Token) {
+
+	var err error
+
+	if token.Expiry.Before(time.Now()) == false || token.RefreshToken == "" {
+		return token, false, nil
+	}
+
+	restoredToken := &oauth2.Token{
+		RefreshToken: token.RefreshToken,
+	}
+
+	c := g.getOAuth2Config().Client(oauth2.NoContext, restoredToken)
+
+	newToken, err := c.Transport.(*oauth2.Transport).Source.Token()
+	if err != nil {
+		return nil, false, err
+	}
+
+	return newToken, true, nil
+
+}
+
+// IOAuth2 - Private functions
+
+func (g GitHub) getOAuth2Config() *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     g.proto.ClientID,
+		ClientSecret: g.proto.ClientSecret,
+		Endpoint: oauth2.Endpoint{
+			TokenURL: TOKEN_URL,
+		},
+	}
+}
+
+// IVCS func
+
+func (GitHub) GetUser(token string) (*vcs.User, error) {
+
+	var err error
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	payload := struct {
+		Username string `json:"login"`
+		ID       int64  `json:"id"`
+	}{}
+
+	user := new(vcs.User)
+
+	resUser, err := client.Get(API_URL + "user")
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.NewDecoder(resUser.Body).Decode(&payload)
+	if err != nil {
+		return nil, err
+	}
+
+	user.Username = payload.Username
+	user.ServiceID = strconv.FormatInt(payload.ID, 10)
+
+	emailsResponse := []struct {
+		Email     string `json:"email"`
+		Confirmed bool   `json:"verified"`
+		Primary   bool   `json:"primary"`
+	}{}
+
+	resEmails, err := client.Get(API_URL + "emails")
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.NewDecoder(resEmails.Body).Decode(&emailsResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, email := range emailsResponse {
+		if email.Confirmed == true && email.Primary == true {
+			user.Email = email.Email
+			break
+		}
+	}
+
+	return user, err
+
+}
+
+func (GitHub) ListRepositories(token, username string, org bool) (*vcs.VCSRepositories, error) {
+
+	var res *http.Response
+	var err error
+
+	var repositories = new(vcs.VCSRepositories)
+
+	username = strings.ToLower(username)
+
+	payload := []struct {
+		Name          string `json:"name"`
+		Description   string `json:"description"`
+		Private       bool   `json:"private"`
+		DefaultBranch string `json:"default_branch"`
+	}{}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	if org {
+		res, err = client.Get(fmt.Sprintf("https://api.github.com/orgs/%s/repos?per_page=99", username))
+	} else {
+		res, err = client.Get("https://api.github.com/user/repos?per_page=99&type=owner")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err = json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	for _, repo := range payload {
+		repository := new(vcs.VCSRepository)
+
+		repository.Name = repo.Name
+		repository.Description = repo.Description
+		repository.Private = repo.Private
+		repository.DefaultBranch = repo.DefaultBranch
+
+		*repositories = append(*repositories, *repository)
+	}
+
+	return repositories, nil
+
+}
+
+func (GitHub) ListBranches(token, owner, repo string) (*vcs.VCSBranches, error) {
+
+	var err error
+	branches := new(vcs.VCSBranches)
+
+	repo = strings.ToLower(repo)
+	owner = strings.ToLower(owner)
+
+	payload := []struct {
+		Name string `json:"name"`
+	}{}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	res, err := client.Get(fmt.Sprintf(`%s/repos/%s/%s/readme`, API_URL, owner, repo))
+
+	if err != nil {
+		return nil, nil
+	}
+
+	if err = json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return nil, nil
+	}
+
+	for _, br := range payload {
+		branch := new(vcs.VCSBranch)
+
+		branch.Name = br.Name
+		*branches = append(*branches, *branch)
+	}
+
+	return branches, nil
+}
+
+func (GitHub) GetLastCommitOfBranch(token, owner, repo, branch string) (*vcs.Commit, error) {
+
+	repo = strings.ToLower(repo)
+	owner = strings.ToLower(owner)
+	branch = strings.ToLower(branch)
+
+	branchResponse := struct {
+		Commit struct {
+						 Hash   string `json:"sha"`
+						 Commit struct {
+											Message   string `json:"message"`
+											Committer struct {
+																	Date  time.Time `json:"date"`
+																	Email string    `json:"email"`
+																} `json:"committer"`
+										} `json:"commit"`
+						 Committer struct {
+											Login string `json:"login"`
+										} `json:"committer"`
+					 } `json:"commit"`
+	}{}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	res, err := client.Get("https://api.github.com/repos/" + owner + "/" + repo + "/branches/" + branch)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err = json.NewDecoder(res.Body).Decode(&branchResponse); err != nil {
+		return nil, err
+	}
+
+	var commit = new(vcs.Commit)
+
+	commit.Hash = branchResponse.Commit.Hash
+	commit.Date = branchResponse.Commit.Commit.Committer.Date
+	commit.Message = branchResponse.Commit.Commit.Message
+	commit.Username = branchResponse.Commit.Committer.Login
+	commit.Email = branchResponse.Commit.Commit.Committer.Email
+
+	return commit, nil
+
+}
+
+func (GitHub) GetReadme(token, owner string, repo string) (string, error) {
+
+	var err error
+
+	repo = strings.ToLower(repo)
+	owner = strings.ToLower(owner)
+
+	payload := struct {
+		Content string `json:"content"`
+	}{}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	res, err := client.Get(fmt.Sprintf(`%s/repos/%s/%s/readme`, API_URL, owner, repo))
+	if err != nil {
+		return "", nil
+	}
+
+	res.Header.Add("Accept", "application/vnd.github.VERSION.raw")
+
+	if err = json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return "", nil
+	}
+
+	if payload.Content != "" {
+		payload.Content = utils.DecodeBase64(payload.Content)
+	}
+
+	return payload.Content, nil
+
+}
+
+func (GitHub) PushPayload(data []byte) (*vcs.VCSBranch, error) {
+
+	var err error
+
+	payload := struct {
+		Ref    string `json:"ref"`
+		Commit struct {
+						 ID        string    `json:"id"`
+						 Message   string    `json:"message"`
+						 Date      time.Time `json:"timestamp"`
+						 Committer struct {
+												 Username string `json:"username"`
+												 Email    string `json:"email"`
+											 } `json:"committer"`
+					 } `json:"head_commit"`
+	}{}
+
+	if err = json.Unmarshal(data, &payload); err != nil {
+		return nil, nil
+	}
+
+	branch := new(vcs.VCSBranch)
+
+	branch.Name = strings.Split(payload.Ref, "/")[2]
+	branch.LastCommit = vcs.Commit{
+		Username: payload.Commit.Committer.Username,
+		Email:    payload.Commit.Committer.Email,
+		Hash:     payload.Commit.ID,
+		Message:  payload.Commit.Message,
+		Date:     payload.Commit.Date,
+	}
+
+	return branch, nil
+
+}
+
+func (GitHub) CreateHook(token, id, owner, repo, host string) (*string, error) {
+
+	repo  = strings.ToLower(repo)
+	owner = strings.ToLower(owner)
+
+	payload := struct {
+		ID    int64  `json:"id"`
+		Error string `json:"message,omitempty"`
+	}{}
+
+	body := struct {
+		Name   string                 `json:"name"`
+		Active bool                   `json:"active"`
+		Events []string               `json:"events"`
+		Config map[string]interface{} `json:"config"`
+	}{"web", true, []string{"push", "pull_request"}, map[string]interface{}{"url": host + "/hook/github/process/" + id, "content_type": "json"}}
+
+	var buf io.ReadWriter
+	buf = new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(body)
+	if err != nil {
+		return nil, nil
+	}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	res, err := client.Post(API_URL+"/repos/"+owner+"/"+ repo +"/hooks", "application/json", buf)
+	if err != nil {
+		return nil, nil
+	}
+
+	if err = json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	if payload.Error != "" {
+		return nil, errors.New(payload.Error)
+	}
+
+	id = strconv.FormatInt(int64(payload.ID), 10)
+
+	return &id, nil
+
+}
+
+func (GitHub) RemoveHook(token, id, owner, repo string) error {
+
+	repo = strings.ToLower(repo)
+	owner = strings.ToLower(owner)
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+
+	req, err := http.NewRequest("DELETE", fmt.Sprintf(`%srepos/%s/%s/hooks/%s`, API_URL, owner, repo, id), nil)
+	req.Header.Set("Content-Type", "application/json")
+
+	_, err = client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
