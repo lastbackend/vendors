@@ -1,11 +1,9 @@
 package github
 
 import (
+	"github.com/lastbackend/vendors/interfaces"
 	"encoding/json"
 	"fmt"
-	"github.com/lastbackend/vendors"
-	"github.com/lastbackend/vendors/protocol"
-	"github.com/lastbackend/vendors/providers/vcs"
 	"golang.org/x/oauth2"
 	"net/http"
 	"strconv"
@@ -14,37 +12,39 @@ import (
 	"io"
 	"bytes"
 	"errors"
+	"github.com/lastbackend/vendors/utils"
 )
 
 // const
 
 const (
-	API_URL   = "https://api.github.com/"
+	API_URL   = "https://api.github.com"
 	TOKEN_URL = "https://github.com/login/oauth/access_token"
-	VENDOR    = vendors.Vendor{Vendor: "GitHub", Host: "GitHub.com"}
 )
 
 // Model
 
 type GitHub struct {
-	proto protocol.OAuth2
+	proto interfaces.OAuth2
 }
 
 // IVendor
 
 func GetClient(clientID, clientSecretID, redirectURI string) *GitHub {
 
-	return &GitHub{proto: protocol.OAuth2{ClientID: clientID, ClientSecret: clientSecretID, RedirectUri: redirectURI}}
+	return &GitHub{proto: interfaces.OAuth2{ClientID: clientID, ClientSecret: clientSecretID, RedirectUri: redirectURI}}
 
 }
 
-func (GitHub) GetVendorInfo() vendors.Vendor {
-	return VENDOR
+func (GitHub) GetVendorInfo() *interfaces.Vendor {
+
+	return &interfaces.Vendor{Vendor: "github", Host: "github.com"}
+
 }
 
 // IOAuth2 func
 
-func (g GitHub) GetToken(code string) (oauth2.Token, error) {
+func (g GitHub) GetToken(code string) (*oauth2.Token, error) {
 
 	token, err := g.getOAuth2Config().Exchange(oauth2.NoContext, code)
 	if err != nil {
@@ -55,7 +55,7 @@ func (g GitHub) GetToken(code string) (oauth2.Token, error) {
 
 }
 
-func (g GitHub) RefreshToken(token oauth2.Token) {
+func (g GitHub) RefreshToken(token *oauth2.Token) (*oauth2.Token, bool, error ) {
 
 	var err error
 
@@ -84,6 +84,7 @@ func (g GitHub) getOAuth2Config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     g.proto.ClientID,
 		ClientSecret: g.proto.ClientSecret,
+		RedirectURL:  g.proto.RedirectUri,
 		Endpoint: oauth2.Endpoint{
 			TokenURL: TOKEN_URL,
 		},
@@ -92,7 +93,7 @@ func (g GitHub) getOAuth2Config() *oauth2.Config {
 
 // IVCS func
 
-func (GitHub) GetUser(token string) (*vcs.User, error) {
+func (GitHub) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 
 	var err error
 
@@ -103,9 +104,10 @@ func (GitHub) GetUser(token string) (*vcs.User, error) {
 		ID       int64  `json:"id"`
 	}{}
 
-	user := new(vcs.User)
+	user := new(interfaces.User)
 
-	resUser, err := client.Get(API_URL + "user")
+	resUser, err := client.Get("https://api.github.com/user")
+
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +126,7 @@ func (GitHub) GetUser(token string) (*vcs.User, error) {
 		Primary   bool   `json:"primary"`
 	}{}
 
-	resEmails, err := client.Get(API_URL + "emails")
+	resEmails, err := client.Get("https://api.github.com/user/emails")
 	if err != nil {
 		return nil, err
 	}
@@ -141,16 +143,16 @@ func (GitHub) GetUser(token string) (*vcs.User, error) {
 		}
 	}
 
-	return user, err
+	return user, nil
 
 }
 
-func (GitHub) ListRepositories(token, username string, org bool) (*vcs.VCSRepositories, error) {
+func (GitHub) ListRepositories(token *oauth2.Token, username string, org bool) (*interfaces.VCSRepositories, error) {
 
 	var res *http.Response
 	var err error
 
-	var repositories = new(vcs.VCSRepositories)
+	var repositories = new(interfaces.VCSRepositories)
 
 	username = strings.ToLower(username)
 
@@ -178,7 +180,7 @@ func (GitHub) ListRepositories(token, username string, org bool) (*vcs.VCSReposi
 	}
 
 	for _, repo := range payload {
-		repository := new(vcs.VCSRepository)
+		repository := new(interfaces.VCSRepository)
 
 		repository.Name = repo.Name
 		repository.Description = repo.Description
@@ -192,10 +194,10 @@ func (GitHub) ListRepositories(token, username string, org bool) (*vcs.VCSReposi
 
 }
 
-func (GitHub) ListBranches(token, owner, repo string) (*vcs.VCSBranches, error) {
+func (GitHub) ListBranches(token *oauth2.Token, owner, repo string) (*interfaces.VCSBranches, error) {
 
 	var err error
-	branches := new(vcs.VCSBranches)
+	branches := new(interfaces.VCSBranches)
 
 	repo = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
@@ -217,7 +219,7 @@ func (GitHub) ListBranches(token, owner, repo string) (*vcs.VCSBranches, error) 
 	}
 
 	for _, br := range payload {
-		branch := new(vcs.VCSBranch)
+		branch := new(interfaces.VCSBranch)
 
 		branch.Name = br.Name
 		*branches = append(*branches, *branch)
@@ -226,7 +228,7 @@ func (GitHub) ListBranches(token, owner, repo string) (*vcs.VCSBranches, error) 
 	return branches, nil
 }
 
-func (GitHub) GetLastCommitOfBranch(token, owner, repo, branch string) (*vcs.Commit, error) {
+func (GitHub) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch string) (*interfaces.Commit, error) {
 
 	repo = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
@@ -260,7 +262,7 @@ func (GitHub) GetLastCommitOfBranch(token, owner, repo, branch string) (*vcs.Com
 		return nil, err
 	}
 
-	var commit = new(vcs.Commit)
+	var commit = new(interfaces.Commit)
 
 	commit.Hash = branchResponse.Commit.Hash
 	commit.Date = branchResponse.Commit.Commit.Committer.Date
@@ -272,7 +274,7 @@ func (GitHub) GetLastCommitOfBranch(token, owner, repo, branch string) (*vcs.Com
 
 }
 
-func (GitHub) GetReadme(token, owner string, repo string) (string, error) {
+func (GitHub) GetReadme(token *oauth2.Token, owner string, repo string) (string, error) {
 
 	var err error
 
@@ -304,7 +306,7 @@ func (GitHub) GetReadme(token, owner string, repo string) (string, error) {
 
 }
 
-func (GitHub) PushPayload(data []byte) (*vcs.VCSBranch, error) {
+func (GitHub) PushPayload(data []byte) (*interfaces.VCSBranch, error) {
 
 	var err error
 
@@ -325,10 +327,10 @@ func (GitHub) PushPayload(data []byte) (*vcs.VCSBranch, error) {
 		return nil, nil
 	}
 
-	branch := new(vcs.VCSBranch)
+	branch := new(interfaces.VCSBranch)
 
 	branch.Name = strings.Split(payload.Ref, "/")[2]
-	branch.LastCommit = vcs.Commit{
+	branch.LastCommit = interfaces.Commit{
 		Username: payload.Commit.Committer.Username,
 		Email:    payload.Commit.Committer.Email,
 		Hash:     payload.Commit.ID,
@@ -340,7 +342,7 @@ func (GitHub) PushPayload(data []byte) (*vcs.VCSBranch, error) {
 
 }
 
-func (GitHub) CreateHook(token, id, owner, repo, host string) (*string, error) {
+func (GitHub) CreateHook(token *oauth2.Token, id, owner, repo, host string) (*string, error) {
 
 	repo  = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
@@ -385,14 +387,14 @@ func (GitHub) CreateHook(token, id, owner, repo, host string) (*string, error) {
 
 }
 
-func (GitHub) RemoveHook(token, id, owner, repo string) error {
+func (GitHub) RemoveHook(token *oauth2.Token, id, owner, repo string) error {
 
 	repo = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf(`%srepos/%s/%s/hooks/%s`, API_URL, owner, repo, id), nil)
+	req, err := http.NewRequest("DELETE", fmt.Sprintf(`%s/repos/%s/%s/hooks/%s`, API_URL, owner, repo, id), nil)
 	req.Header.Set("Content-Type", "application/json")
 
 	_, err = client.Do(req)
