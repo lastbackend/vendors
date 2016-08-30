@@ -1,13 +1,14 @@
 package slack
 
 import (
-	"golang.org/x/oauth2"
-	"net/url"
 	"encoding/json"
-	"sync"
-	"github.com/lastbackend/vendors/interfaces"
-	"net/http"
 	"errors"
+	"fmt"
+	"github.com/lastbackend/vendors/interfaces"
+	"golang.org/x/oauth2"
+	"net/http"
+	"net/url"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,7 @@ const (
 type Slack struct {
 	clientID       string
 	clientSecretID string
+	redirectURI    string
 	vendor         string
 	host           string
 	access         string
@@ -34,17 +36,17 @@ func GetClient(clientID, clientSecretID, redirectURI string) *Slack {
 	return &Slack{
 		clientID:       clientID,
 		clientSecretID: clientSecretID,
+		redirectURI:    redirectURI,
 	}
 }
 
 // IVendor
 
 func (Slack) GetVendorInfo() *interfaces.Vendor {
-
 	return &interfaces.Vendor{
 		Vendor: "slack",
-		Host: "slack.com"}
-
+		Host:   "slack.com",
+	}
 }
 
 func (Slack) httpGet(url string, i interface{}) error {
@@ -88,7 +90,7 @@ func (s Slack) GetToken(code string) (*oauth2.Token, error) {
 
 func (s Slack) RefreshToken(token *oauth2.Token) (*oauth2.Token, bool, error) {
 
-	if token.Expiry.Before(time.Now()) == false || token.RefreshToken == "" {
+	if !token.Expiry.Before(time.Now()) || token.RefreshToken == "" {
 		return token, false, nil
 	}
 
@@ -121,7 +123,6 @@ func (s Slack) getOAuth2Config() *oauth2.Config {
 func (Slack) ListChannels(token *oauth2.Token) (*interfaces.NotifyChannels, error) {
 
 	var err error
-	var channels = new(interfaces.NotifyChannels)
 
 	payload := struct {
 		Ok       bool `json:"ok"`
@@ -134,7 +135,9 @@ func (Slack) ListChannels(token *oauth2.Token) (*interfaces.NotifyChannels, erro
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Get(API_URL + "/channels.list?token=" + token.AccessToken)
+	var uri = fmt.Sprintf("%s/channels.list?token=%s", API_URL, token.AccessToken)
+
+	res, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +146,8 @@ func (Slack) ListChannels(token *oauth2.Token) (*interfaces.NotifyChannels, erro
 	if err != nil {
 		return nil, err
 	}
+
+	var channels = new(interfaces.NotifyChannels)
 
 	for _, ch := range payload.Channels {
 		channel := interfaces.NotifyChannel{}
@@ -162,7 +167,6 @@ func (Slack) ListChannels(token *oauth2.Token) (*interfaces.NotifyChannels, erro
 func (Slack) ListGroups(token *oauth2.Token) (*interfaces.NotifyGroups, error) {
 
 	var err error
-	var groups = new(interfaces.NotifyGroups)
 
 	payload := struct {
 		Ok     bool `json:"ok"`
@@ -175,8 +179,9 @@ func (Slack) ListGroups(token *oauth2.Token) (*interfaces.NotifyGroups, error) {
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Get(API_URL + "/groups.list?token=" + token.AccessToken)
+	var uri = fmt.Sprintf("%s/groups.list?token=%s", API_URL, token.AccessToken)
 
+	res, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +190,8 @@ func (Slack) ListGroups(token *oauth2.Token) (*interfaces.NotifyGroups, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var groups = new(interfaces.NotifyGroups)
 
 	for _, gr := range payload.Groups {
 		group := interfaces.NotifyGroup{}
@@ -211,28 +218,29 @@ func (s Slack) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 	query := make(url.Values)
 	query.Set("token", token.AccessToken)
 
-	u := API_URL + "/auth.test?" + query.Encode()
-	err := s.httpGet(u, &payload)
+	var uri = fmt.Sprintf("%s/auth.test?%s", API_URL, query.Encode())
+
+	err := s.httpGet(uri, &payload)
 	if err != nil {
 		return nil, err
 	}
 
 	userResponse := struct {
 		Profile struct {
-							Email string `json:"email"`
-						} `json:"profile"`
+			Email string `json:"email"`
+		} `json:"profile"`
 	}{}
-
-	user := new(interfaces.User)
 
 	query = make(url.Values)
 	query.Set("token", token.AccessToken)
 	query.Set("user", payload.ID)
 
-	u = API_URL + "/users.profile.get?" + query.Encode()
-	if err := s.httpGet(u, &userResponse); err != nil {
+	uri = fmt.Sprintf("%s/users.profile.get?%s", API_URL, query.Encode())
+	if err := s.httpGet(uri, &userResponse); err != nil {
 		return nil, err
 	}
+
+	var user = new(interfaces.User)
 
 	user.Username = payload.Username
 	user.Email = userResponse.Profile.Email
