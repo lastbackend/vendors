@@ -1,18 +1,18 @@
 package bitbucket
 
 import (
-	"golang.org/x/oauth2"
+	"bytes"
 	"encoding/json"
-	"strings"
+	"errors"
 	"fmt"
-	"io"
 	"github.com/lastbackend/vendors/interfaces"
-	"time"
+	"golang.org/x/oauth2"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"regexp"
-	"io/ioutil"
-	"errors"
-	"bytes"
+	"strings"
+	"time"
 )
 
 // const
@@ -31,9 +31,7 @@ type BitBucket struct {
 // IVendor
 
 func GetClient(clientID, clientSecretID, redirectURI string) *BitBucket {
-
 	return &BitBucket{proto: interfaces.OAuth2{ClientID: clientID, ClientSecret: clientSecretID, RedirectUri: redirectURI}}
-
 }
 
 func (BitBucket) GetVendorInfo() *interfaces.Vendor {
@@ -50,14 +48,13 @@ func (g BitBucket) GetToken(code string) (*oauth2.Token, error) {
 	}
 
 	return token, nil
-
 }
 
-func (g BitBucket) RefreshToken(token *oauth2.Token) (*oauth2.Token, bool, error ) {
+func (g BitBucket) RefreshToken(token *oauth2.Token) (*oauth2.Token, bool, error) {
 
 	var err error
 
-	if token.Expiry.Before(time.Now()) == false || token.RefreshToken == "" {
+	if !token.Expiry.Before(time.Now()) || token.RefreshToken == "" {
 		return token, false, nil
 	}
 
@@ -73,7 +70,6 @@ func (g BitBucket) RefreshToken(token *oauth2.Token) (*oauth2.Token, bool, error
 	}
 
 	return newToken, true, nil
-
 }
 
 // IOAuth2 - Private functions
@@ -93,7 +89,6 @@ func (g BitBucket) getOAuth2Config() *oauth2.Config {
 
 func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 
-
 	var err error
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
@@ -103,9 +98,9 @@ func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 		ID       string `json:"uuid"`
 	}{}
 
-	user := new(interfaces.User)
+	var uri = fmt.Sprintf("%s/2.0/user", API_URL)
 
-	resUser, err := client.Get(API_URL + "/2.0/user")
+	resUser, err := client.Get(uri)
 
 	if err != nil {
 		return nil, err
@@ -115,6 +110,8 @@ func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var user = new(interfaces.User)
 
 	user.Username = payload.Username
 	user.ServiceID = payload.ID
@@ -127,7 +124,9 @@ func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 		} `json:"values"`
 	}{}
 
-	resEmails, err := client.Get(API_URL + "/2.0/user/emails")
+	uri = fmt.Sprintf("%s/2.0/user/emails", API_URL)
+
+	resEmails, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -145,15 +144,12 @@ func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 	}
 
 	return user, nil
-
 }
 
 func (BitBucket) ListRepositories(token *oauth2.Token, username string, org bool) (*interfaces.VCSRepositories, error) {
 
 	var res *http.Response
 	var err error
-
-	var repositories = new(interfaces.VCSRepositories)
 
 	username = strings.ToLower(username)
 
@@ -167,12 +163,12 @@ func (BitBucket) ListRepositories(token *oauth2.Token, username string, org bool
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
+	var uri = fmt.Sprintf("%s/2.0/repositories?role=owner", API_URL)
 	if org {
-		res, err = client.Get(fmt.Sprintf(API_URL + "/2.0/repositories/%s?role=%s&pagelen=100", username, "admin"))
-	} else {
-		res, err = client.Get(API_URL + "/2.0/repositories?role=owner")
+		uri = fmt.Sprintf("%s/2.0/repositories/%s?role=admin&pagelen=100", API_URL, username)
 	}
 
+	res, err = client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -181,6 +177,8 @@ func (BitBucket) ListRepositories(token *oauth2.Token, username string, org bool
 	if err != nil {
 		return nil, err
 	}
+
+	var repositories = new(interfaces.VCSRepositories)
 
 	for _, repo := range payload.Repos {
 		repository := new(interfaces.VCSRepository)
@@ -192,7 +190,6 @@ func (BitBucket) ListRepositories(token *oauth2.Token, username string, org bool
 	}
 
 	return repositories, nil
-
 }
 
 func (BitBucket) ListBranches(token *oauth2.Token, owner, repo string) (*interfaces.VCSBranches, error) {
@@ -202,15 +199,16 @@ func (BitBucket) ListBranches(token *oauth2.Token, owner, repo string) (*interfa
 	repo = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
 
-	var data map[string]map[string]interface{} = make(map[string]map[string]interface{})
-
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Get(API_URL + "/api/1.0/repositories/" + owner + "/" + repo + "/branches")
+	var uri = fmt.Sprintf("%s/api/1.0/repositories/%s/%s/branches", API_URL, owner, repo)
 
+	res, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
+
+	var data map[string]map[string]interface{} = make(map[string]map[string]interface{})
 
 	err = json.NewDecoder(res.Body).Decode(&data)
 	if err != nil {
@@ -225,7 +223,6 @@ func (BitBucket) ListBranches(token *oauth2.Token, owner, repo string) (*interfa
 	}
 
 	return branches, nil
-
 }
 
 func (BitBucket) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch string) (*interfaces.Commit, error) {
@@ -238,11 +235,11 @@ func (BitBucket) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch 
 		Commits []struct {
 			Hash   string `json:"hash"`
 			Author struct {
-							 Raw  string `json:"raw"`
-							 User struct {
-											Username string `json:"username"`
-										} `json:"user"`
-						 } `json:"author"`
+				Raw  string `json:"raw"`
+				User struct {
+					Username string `json:"username"`
+				} `json:"user"`
+			} `json:"author"`
 			Date    time.Time `json:"date"`
 			Message string    `json:"message"`
 		} `json:"values"`
@@ -250,8 +247,9 @@ func (BitBucket) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch 
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Get(API_URL + "/2.0/repositories/" + owner + "/" + repo + "/commits/" + branch)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/commits/%s", API_URL, owner, repo, branch)
 
+	res, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -268,12 +266,11 @@ func (BitBucket) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch 
 		return nil, err
 	}
 
-	var commit = new(interfaces.Commit)
-
 	if len(payload.Commits) == 0 {
 		return nil, nil
 	}
 
+	var commit = new(interfaces.Commit)
 	commit.Username = payload.Commits[0].Author.User.Username
 	commit.Hash = payload.Commits[0].Hash
 	commit.Message = payload.Commits[0].Message
@@ -281,7 +278,6 @@ func (BitBucket) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch 
 	commit.Email = r.FindStringSubmatch(payload.Commits[0].Author.Raw)[1]
 
 	return commit, nil
-
 }
 
 func (BitBucket) GetReadme(token *oauth2.Token, owner string, repo string) (string, error) {
@@ -291,7 +287,9 @@ func (BitBucket) GetReadme(token *oauth2.Token, owner string, repo string) (stri
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Get(fmt.Sprintf("%s/1.0/repositories/%s/%s/raw/master/README.md", API_URL, owner, repo))
+	var uri = fmt.Sprintf("%s/1.0/repositories/%s/%s/raw/master/README.md", API_URL, owner, repo)
+
+	res, err := client.Get(uri)
 	if err != nil {
 		return "", err
 	}
@@ -307,7 +305,6 @@ func (BitBucket) GetReadme(token *oauth2.Token, owner string, repo string) (stri
 	}
 
 	return string(content), nil
-
 }
 
 func (BitBucket) PushPayload(data []byte) (*interfaces.VCSBranch, error) {
@@ -316,23 +313,23 @@ func (BitBucket) PushPayload(data []byte) (*interfaces.VCSBranch, error) {
 
 	payload := struct {
 		Push struct {
-					 Changes []struct {
-						 New struct {
-									 Name string `json:"name"`
-								 } `json:"new"`
-						 Commits []struct {
-							 Hash    string    `json:"hash"`
-							 Message string    `json:"message"`
-							 Date    time.Time `json:"date"`
-							 Author  struct {
-												 User struct {
-																Username string `json:"username"`
-															} `json:"user"`
-												 Raw string `json:"raw"`
-											 } `json:"author"`
-						 } `json:"commits"`
-					 } `json:"changes"`
-				 } `json:"push"`
+			Changes []struct {
+				New struct {
+					Name string `json:"name"`
+				} `json:"new"`
+				Commits []struct {
+					Hash    string    `json:"hash"`
+					Message string    `json:"message"`
+					Date    time.Time `json:"date"`
+					Author  struct {
+						User struct {
+							Username string `json:"username"`
+						} `json:"user"`
+						Raw string `json:"raw"`
+					} `json:"author"`
+				} `json:"commits"`
+			} `json:"changes"`
+		} `json:"push"`
 	}{}
 
 	if err = json.Unmarshal(data, &payload); err != nil {
@@ -352,19 +349,18 @@ func (BitBucket) PushPayload(data []byte) (*interfaces.VCSBranch, error) {
 	}
 
 	return branch, nil
-
 }
 
 func (BitBucket) CreateHook(token *oauth2.Token, hookID, owner, repo, host string) (*string, error) {
 
-	repository := strings.ToLower(repo)
+	repo = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
 
 	payload := struct {
 		ID    string `json:"uuid"`
 		Error struct {
-						Message string `json:"message"`
-					} `json:"error,omitempty"`
+			Message string `json:"message"`
+		} `json:"error,omitempty"`
 	}{}
 
 	body := struct {
@@ -383,7 +379,9 @@ func (BitBucket) CreateHook(token *oauth2.Token, hookID, owner, repo, host strin
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Post(API_URL + "/2.0/repositories/"+owner+"/"+repository+"/hooks", "application/json", buf)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks", API_URL, owner, repo)
+
+	res, err := client.Post(uri, "application/json", buf)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +397,6 @@ func (BitBucket) CreateHook(token *oauth2.Token, hookID, owner, repo, host strin
 	id := payload.ID
 
 	return &id, nil
-
 }
 
 func (BitBucket) RemoveHook(token *oauth2.Token, hookID, owner, repo string) error {
@@ -411,7 +408,9 @@ func (BitBucket) RemoveHook(token *oauth2.Token, hookID, owner, repo string) err
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks/%s", API_URL, owner, repo, hookID), nil)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks/%s", API_URL, owner, repo, hookID)
+
+	req, err := http.NewRequest("DELETE", uri, nil)
 	req.Header.Set("Content-Type", "application/json")
 
 	_, err = client.Do(req)
@@ -420,5 +419,4 @@ func (BitBucket) RemoveHook(token *oauth2.Token, hookID, owner, repo string) err
 	}
 
 	return nil
-
 }
