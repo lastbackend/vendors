@@ -1,23 +1,20 @@
-# OAuth2 for Go
+# Vendors for Go
 
 ## Installation
 
 ~~~~
-go get golang.org/lastbackend/oauth2
+go get github.com/lastbackend/vendors
 ~~~~
 
 ## Usage ##
 
 ```go
-import "github.com/lastbackend/oauth2"
+import "github.com/lastbackend/vendors"
 ```
 
-Get client for vendor type
+Get client for github
 ```go
-client, err := oauth2.GetClient(vendor, clientID, clientSecretID, redirectURI)
-if err != nil {
-    return err
-}
+var client = vendors.GetGitHub(clientID, clientSecretID, redirectURI)
 ```
 
 Get token using auth code

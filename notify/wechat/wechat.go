@@ -3,12 +3,18 @@ package wechat
 import (
 	"encoding/json"
 	"errors"
-	"model"
+	"fmt"
+	"github.com/lastbackend/vendors/interfaces"
 	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
-	"time"
 	"strings"
+	"time"
+)
+
+const (
+	API_URL   = "https://api.weixin.qq.com"
+	TOKEN_URL = "https://api.weixin.qq.com/sns/oauth2/access_token"
 )
 
 type WeChat struct {
@@ -42,14 +48,14 @@ type RefreshToken struct {
 	Scopes       string `json:"scope,omitempty"`
 }
 
-func GetClient(clientID, clientSecretID, redirectURI string) (*WeChat, error) {
+func GetClient(clientID, clientSecretID, redirectURI string) *WeChat {
 	return &WeChat{
 		clientID:       clientID,
 		clientSecretID: clientSecretID,
 		redirectURI:    redirectURI,
 		vendor:         "wechat",
 		host:           "open.weixin.qq.com",
-	}, nil
+	}
 }
 
 func (w WeChat) GetToken(code string) (token *oauth2.Token, err error) {
@@ -62,8 +68,9 @@ func (w WeChat) GetToken(code string) (token *oauth2.Token, err error) {
 	query.Set("secret", w.clientSecretID)
 	query.Set("code", code)
 
-	url := "https://api.weixin.qq.com/sns/oauth2/access_token?" + query.Encode()
-	resp, err := http.Get(url)
+	var uri = fmt.Sprintf("%s/sns/oauth2/access_token?%s", API_URL, query.Encode())
+
+	resp, err := http.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +115,9 @@ func (w WeChat) RefreshToken(token *oauth2.Token) (rt *oauth2.Token, _ bool, err
 	query.Set("appid", w.clientID)
 	query.Set("refresh_token", token.RefreshToken)
 
-	url := "https://api.weixin.qq.com/sns/oauth2/refresh_token?" + query.Encode()
-	resp, err := http.Get(url)
+	var uri = fmt.Sprintf("%s/sns/oauth2/refresh_token?%s", API_URL, query.Encode())
+
+	resp, err := http.Get(uri)
 	if err != nil {
 		return nil, false, err
 	}
@@ -141,7 +149,7 @@ func (w WeChat) RefreshToken(token *oauth2.Token) (rt *oauth2.Token, _ bool, err
 	return rt, true, err
 }
 
-func (w WeChat) GetUser(token *oauth2.Token) (*model.User, error) {
+func (w WeChat) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 
 	var err error
 
@@ -151,11 +159,10 @@ func (w WeChat) GetUser(token *oauth2.Token) (*model.User, error) {
 		Username string `json:"nickname"`
 		Email    string `json:"email"`
 		ID       string `json:"openid"`
-		Unionid  string `json:"unionid"`
-		Openid   string `json:"openid"`
+		UnionID  string `json:"unionid"`
 	}{}
 
-	user := new(model.User)
+	user := new(interfaces.User)
 
 	query := make(url.Values)
 	query.Set("access_token", token.AccessToken)
@@ -165,8 +172,9 @@ func (w WeChat) GetUser(token *oauth2.Token) (*model.User, error) {
 	//	query.Set("lang", WCAuthClientSecret)
 	//}
 
-	resUser, err := client.Get("https://api.weixin.qq.com/sns/userinfo?" + query.Encode())
+	var uri = fmt.Sprintf("%s/sns/userinfo?%s", API_URL, query.Encode())
 
+	resUser, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -185,20 +193,20 @@ func (w WeChat) GetUser(token *oauth2.Token) (*model.User, error) {
 	return user, nil
 }
 
-func (w WeChat) GetVendorInfo() *model.Vendor {
-	return &model.Vendor{
+func (w WeChat) GetVendorInfo() *interfaces.Vendor {
+	return &interfaces.Vendor{
 		Vendor: w.vendor,
 		Host:   w.host,
 	}
 }
 
-func (w WeChat) config() *oauth2.Config {
+func (w WeChat) getOAuth2Config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     w.clientID,
 		ClientSecret: w.clientSecretID,
 		RedirectURL:  w.redirectURI,
 		Endpoint: oauth2.Endpoint{
-			TokenURL: "https://bitbucket.org/site/oauth2/access_token",
+			TokenURL: TOKEN_URL,
 		},
 	}
 }
