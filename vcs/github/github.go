@@ -202,7 +202,7 @@ func (GitHub) ListBranches(token *oauth2.Token, owner, repo string) (*interfaces
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	res, err := client.Get(fmt.Sprintf(`%s/repos/%s/%s/readme`, API_URL, owner, repo))
+	res, err := client.Get(fmt.Sprintf("%s/repos/%s/%s/branches", API_URL, owner, repo))
 
 	if err != nil {
 		return nil, nil
