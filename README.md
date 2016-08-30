@@ -3,7 +3,7 @@
 ## Installation
 
 ~~~~
-go get golang.org/lastbackend/vendors
+go get github.com/lastbackend/vendors
 ~~~~
 
 ## Usage ##
