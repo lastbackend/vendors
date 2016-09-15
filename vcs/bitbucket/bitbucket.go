@@ -18,8 +18,9 @@ import (
 // const
 
 const (
-	API_URL   = "https://api.bitbucket.org"
-	TOKEN_URL = "https://bitbucket.org/site/oauth2/access_token"
+	API_V1_URL = "https://bitbucket.org"
+	API_V2_URL = "https://api.bitbucket.org"
+	TOKEN_URL  = "https://bitbucket.org/site/oauth2/access_token"
 )
 
 // Model
@@ -98,7 +99,7 @@ func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 		ID       string `json:"uuid"`
 	}{}
 
-	var uri = fmt.Sprintf("%s/2.0/user", API_URL)
+	var uri = fmt.Sprintf("%s/2.0/user", API_V2_URL)
 
 	resUser, err := client.Get(uri)
 
@@ -124,7 +125,7 @@ func (BitBucket) GetUser(token *oauth2.Token) (*interfaces.User, error) {
 		} `json:"values"`
 	}{}
 
-	uri = fmt.Sprintf("%s/2.0/user/emails", API_URL)
+	uri = fmt.Sprintf("%s/2.0/user/emails", API_V2_URL)
 
 	resEmails, err := client.Get(uri)
 	if err != nil {
@@ -163,9 +164,9 @@ func (BitBucket) ListRepositories(token *oauth2.Token, username string, org bool
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	var uri = fmt.Sprintf("%s/2.0/repositories?role=owner", API_URL)
+	var uri = fmt.Sprintf("%s/2.0/repositories?role=owner", API_V2_URL)
 	if org {
-		uri = fmt.Sprintf("%s/2.0/repositories/%s?role=admin&pagelen=100", API_URL, username)
+		uri = fmt.Sprintf("%s/2.0/repositories/%s?role=admin&pagelen=100", API_V2_URL, username)
 	}
 
 	res, err = client.Get(uri)
@@ -199,27 +200,33 @@ func (BitBucket) ListBranches(token *oauth2.Token, owner, repo string) (*interfa
 	repo = strings.ToLower(repo)
 	owner = strings.ToLower(owner)
 
+	payload := struct {
+		Branches []struct {
+			Type string `json:"type"`
+			Name string `json:"name"`
+		} `json:"values"`
+	}{}
+
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	var uri = fmt.Sprintf("%s/api/1.0/repositories/%s/%s/branches", API_URL, owner, repo)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/refs/branches?pagelen=100", API_V2_URL, owner, repo)
 
 	res, err := client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
 
-	var data map[string]map[string]interface{} = make(map[string]map[string]interface{})
-
-	err = json.NewDecoder(res.Body).Decode(&data)
-	if err != nil {
+	if err = json.NewDecoder(res.Body).Decode(&payload); err != nil {
 		return nil, err
 	}
 
-	for key := range data {
-		branch := new(interfaces.VCSBranch)
+	for _, br := range payload.Branches {
+		if br.Type == "branch" {
+			branch := new(interfaces.VCSBranch)
 
-		branch.Name = key
-		*branches = append(*branches, *branch)
+			branch.Name = br.Name
+			*branches = append(*branches, *branch)
+		}
 	}
 
 	return branches, nil
@@ -247,7 +254,7 @@ func (BitBucket) GetLastCommitOfBranch(token *oauth2.Token, owner, repo, branch 
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/commits/%s", API_URL, owner, repo, branch)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/commits/%s", API_V2_URL, owner, repo, branch)
 
 	res, err := client.Get(uri)
 	if err != nil {
@@ -287,7 +294,7 @@ func (BitBucket) GetReadme(token *oauth2.Token, owner string, repo string) (stri
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	var uri = fmt.Sprintf("%s/1.0/repositories/%s/%s/raw/master/README.md", API_URL, owner, repo)
+	var uri = fmt.Sprintf("%s/1.0/repositories/%s/%s/raw/master/README.md", API_V1_URL, owner, repo)
 
 	res, err := client.Get(uri)
 	if err != nil {
@@ -379,7 +386,7 @@ func (BitBucket) CreateHook(token *oauth2.Token, hookID, owner, repo, host strin
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks", API_URL, owner, repo)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks", API_V2_URL, owner, repo)
 
 	res, err := client.Post(uri, "application/json", buf)
 	if err != nil {
@@ -408,7 +415,7 @@ func (BitBucket) RemoveHook(token *oauth2.Token, hookID, owner, repo string) err
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks/%s", API_URL, owner, repo, hookID)
+	var uri = fmt.Sprintf("%s/2.0/repositories/%s/%s/hooks/%s", API_V2_URL, owner, repo, hookID)
 
 	req, err := http.NewRequest("DELETE", uri, nil)
 	req.Header.Set("Content-Type", "application/json")
